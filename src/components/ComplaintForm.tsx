@@ -3,6 +3,7 @@ import { Camera, MapPin, User, Mail, Phone, FileText } from 'lucide-react';
 import MapComponent from './MapComponent';
 import ImageUpload from './ImageUpload';
 import { generateComplaintId } from '../utils/complaintUtils';
+import { complaintService } from '../services/complaintService';
 import type { Complaint } from '../types/complaint';
 
 interface ComplaintFormProps {
@@ -51,48 +52,52 @@ const ComplaintForm: React.FC<ComplaintFormProps> = ({ onSubmit }) => {
 
     setIsSubmitting(true);
 
-    const complaint: Complaint = {
-      id: generateComplaintId(),
-      name: formData.name,
-      email: formData.email,
-      phone: formData.phone,
-      ward: formData.ward,
-      type: formData.complaintType,
-      description: formData.description,
-      priority: formData.priority,
-      location: {
-        lat: selectedLocation.lat,
-        lng: selectedLocation.lng,
-        address: formData.ward ? `Ward ${formData.ward}` : `${selectedLocation.lat.toFixed(4)}, ${selectedLocation.lng.toFixed(4)}`
-      },
-      image: uploadedImage,
-      status: 'pending',
-      date: new Date().toLocaleDateString('en-GB'),
-      createdAt: new Date()
-    };
+    try {
+      const complaint: Complaint = {
+        id: generateComplaintId(),
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        ward: formData.ward,
+        type: formData.complaintType,
+        description: formData.description,
+        priority: formData.priority,
+        location: {
+          lat: selectedLocation.lat,
+          lng: selectedLocation.lng,
+          address: formData.ward ? `Ward ${formData.ward}` : `${selectedLocation.lat.toFixed(4)}, ${selectedLocation.lng.toFixed(4)}`
+        },
+        image: uploadedImage,
+        status: 'pending',
+        date: new Date().toLocaleDateString('en-GB'),
+        createdAt: new Date()
+      };
 
-    // Save to localStorage
-    const existingComplaints = JSON.parse(localStorage.getItem('citysolve_complaints') || '[]');
-    existingComplaints.unshift(complaint);
-    localStorage.setItem('citysolve_complaints', JSON.stringify(existingComplaints));
+      // Save to Supabase database
+      const savedComplaint = await complaintService.createComplaint(complaint);
+      
+      onSubmit(savedComplaint);
 
-    onSubmit(complaint);
+      // Reset form
+      setFormData({
+        name: '',
+        email: '',
+        phone: '',
+        ward: '',
+        complaintType: '',
+        description: '',
+        priority: 'Low'
+      });
+      setSelectedLocation(null);
+      setUploadedImage(null);
 
-    // Reset form
-    setFormData({
-      name: '',
-      email: '',
-      phone: '',
-      ward: '',
-      complaintType: '',
-      description: '',
-      priority: 'Low'
-    });
-    setSelectedLocation(null);
-    setUploadedImage(null);
-    setIsSubmitting(false);
-
-    alert(`Thank you, ${complaint.name}! Your complaint has been submitted successfully.\nYour reference number is: ${complaint.id}`);
+      alert(`Thank you, ${savedComplaint.name}! Your complaint has been submitted successfully.\nYour reference number is: ${savedComplaint.id}`);
+    } catch (error) {
+      console.error('Error submitting complaint:', error);
+      alert('Failed to submit complaint. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const generateAIDescription = (type: string, hasImage: boolean): string => {

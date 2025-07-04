@@ -1,71 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Search, Filter, Eye, Calendar, MapPin } from 'lucide-react';
+import { useComplaints } from '../hooks/useComplaints';
 import type { Complaint } from '../types/complaint';
-import { sampleComplaints } from '../utils/sampleData';
 
 const BrowseComplaints = () => {
-  const [complaints, setComplaints] = useState<Complaint[]>([]);
-  const [filteredComplaints, setFilteredComplaints] = useState<Complaint[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
   const itemsPerPage = 10;
 
-  useEffect(() => {
-    loadComplaints();
-  }, []);
-
-  useEffect(() => {
-    filterComplaints();
-  }, [complaints, searchTerm, statusFilter]);
-
-  const loadComplaints = () => {
-    const stored = localStorage.getItem('citysolve_complaints');
-    let allComplaints: Complaint[] = [];
-    
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        allComplaints = Array.isArray(parsed) ? parsed : [];
-      } catch (error) {
-        console.error('Error parsing stored complaints:', error);
-        allComplaints = [];
-      }
-    }
-    
-    // If no stored complaints, use sample data
-    if (allComplaints.length === 0) {
-      allComplaints = [...sampleComplaints];
-      localStorage.setItem('citysolve_complaints', JSON.stringify(allComplaints));
-    }
-    
-    // Sort by creation date (newest first)
-    allComplaints.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    
-    setComplaints(allComplaints);
-  };
-
-  const filterComplaints = () => {
-    let filtered = complaints;
-
-    if (searchTerm) {
-      filtered = filtered.filter(complaint =>
-        complaint.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        complaint.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        complaint.location.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        complaint.priority.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        complaint.name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    if (statusFilter) {
-      filtered = filtered.filter(complaint => complaint.status === statusFilter);
-    }
-
-    setFilteredComplaints(filtered);
-    setCurrentPage(1);
-  };
+  const { complaints, loading, error } = useComplaints({
+    filters: {
+      search: searchTerm || undefined,
+      status: statusFilter || undefined,
+    },
+    realtime: true,
+  });
 
   const getStatusBadge = (status: string) => {
     const baseClasses = "px-3 py-1 rounded-full text-xs font-bold";
@@ -101,13 +52,38 @@ const BrowseComplaints = () => {
     }
   };
 
-  const totalPages = Math.ceil(filteredComplaints.length / itemsPerPage);
+  const totalPages = Math.ceil(complaints.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentComplaints = filteredComplaints.slice(startIndex, startIndex + itemsPerPage);
+  const currentComplaints = complaints.slice(startIndex, startIndex + itemsPerPage);
 
   const handleRowClick = (complaint: Complaint) => {
     setSelectedComplaint(complaint);
   };
+
+  if (loading) {
+    return (
+      <section id="search" className="py-20">
+        <div className="container mx-auto px-6 max-w-7xl">
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mx-auto mb-4"></div>
+            <p className="text-blue-600 font-medium">Loading complaints...</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section id="search" className="py-20">
+        <div className="container mx-auto px-6 max-w-7xl">
+          <div className="text-center py-12">
+            <p className="text-red-600 font-medium">Error loading complaints: {error}</p>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section id="search" className="py-20">
@@ -149,7 +125,7 @@ const BrowseComplaints = () => {
           {/* Results Count */}
           <div className="mb-6">
             <p className="text-blue-600 font-medium">
-              Showing {currentComplaints.length} of {filteredComplaints.length} complaints
+              Showing {currentComplaints.length} of {complaints.length} complaints
             </p>
           </div>
 

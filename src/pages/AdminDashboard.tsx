@@ -2,101 +2,42 @@ import React, { useState, useEffect } from 'react';
 import { Search, Filter, Eye, Clock, CheckCircle, AlertCircle, XCircle, LogOut } from 'lucide-react';
 import Header from '../components/Header';
 import AdminLogin from '../components/AdminLogin';
+import { useComplaints } from '../hooks/useComplaints';
+import { useComplaintStats } from '../hooks/useComplaintStats';
+import { authService } from '../services/authService';
 import type { Complaint } from '../types/complaint';
-import { sampleComplaints } from '../utils/sampleData';
 
 const AdminDashboard = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [complaints, setComplaints] = useState<Complaint[]>([]);
-  const [filteredComplaints, setFilteredComplaints] = useState<Complaint[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
   const itemsPerPage = 15;
 
+  const { complaints, loading, error } = useComplaints({
+    filters: {
+      search: searchTerm || undefined,
+      status: statusFilter || undefined,
+    },
+    realtime: true,
+  });
+
+  const { stats, loading: statsLoading } = useComplaintStats();
+
   useEffect(() => {
     // Check if admin is already logged in
-    const adminLoggedIn = localStorage.getItem('citysolve_admin_logged_in');
-    if (adminLoggedIn === 'true') {
-      setIsLoggedIn(true);
-    }
+    setIsLoggedIn(authService.isAdminLoggedIn());
   }, []);
-
-  useEffect(() => {
-    if (isLoggedIn) {
-      loadComplaints();
-      // Listen for storage changes to update in real-time
-      const handleStorageChange = () => {
-        loadComplaints();
-      };
-      window.addEventListener('storage', handleStorageChange);
-      return () => window.removeEventListener('storage', handleStorageChange);
-    }
-  }, [isLoggedIn]);
-
-  useEffect(() => {
-    if (isLoggedIn) {
-      filterComplaints();
-    }
-  }, [complaints, searchTerm, statusFilter, isLoggedIn]);
 
   const handleLogin = () => {
     setIsLoggedIn(true);
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('citysolve_admin_logged_in');
+    authService.logoutAdmin();
     setIsLoggedIn(false);
-    setComplaints([]);
-    setFilteredComplaints([]);
     setSelectedComplaint(null);
-  };
-
-  const loadComplaints = () => {
-    const stored = localStorage.getItem('citysolve_complaints');
-    let allComplaints: Complaint[] = [];
-    
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        allComplaints = Array.isArray(parsed) ? parsed : [];
-      } catch (error) {
-        console.error('Error parsing stored complaints:', error);
-        allComplaints = [];
-      }
-    }
-    
-    // If no stored complaints, use sample data
-    if (allComplaints.length === 0) {
-      allComplaints = [...sampleComplaints];
-      localStorage.setItem('citysolve_complaints', JSON.stringify(allComplaints));
-    }
-    
-    // Sort by creation date (newest first)
-    allComplaints.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    
-    setComplaints(allComplaints);
-  };
-
-  const filterComplaints = () => {
-    let filtered = complaints;
-
-    if (searchTerm) {
-      filtered = filtered.filter(complaint =>
-        complaint.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        complaint.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        complaint.location.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        complaint.name.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    if (statusFilter) {
-      filtered = filtered.filter(complaint => complaint.status === statusFilter);
-    }
-
-    setFilteredComplaints(filtered);
-    setCurrentPage(1);
   };
 
   // If not logged in, show login form
@@ -153,9 +94,9 @@ const AdminDashboard = () => {
     }
   };
 
-  const totalPages = Math.ceil(filteredComplaints.length / itemsPerPage);
+  const totalPages = Math.ceil(complaints.length / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentComplaints = filteredComplaints.slice(startIndex, startIndex + itemsPerPage);
+  const currentComplaints = complaints.slice(startIndex, startIndex + itemsPerPage);
 
   const generateStatusUpdates = (complaint: Complaint) => {
     const baseDate = new Date(complaint.createdAt);
@@ -192,17 +133,32 @@ const AdminDashboard = () => {
     return updates;
   };
 
-  const getStatsData = () => {
-    const total = complaints.length;
-    const pending = complaints.filter(c => c.status === 'pending').length;
-    const inProgress = complaints.filter(c => c.status === 'in_progress').length;
-    const resolved = complaints.filter(c => c.status === 'resolved').length;
-    const rejected = complaints.filter(c => c.status === 'rejected').length;
+  if (loading || statsLoading) {
+    return (
+      <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 via-white to-yellow-50">
+        <Header />
+        <main className="flex-grow flex items-center justify-center">
+          <div className="text-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-700 mx-auto mb-4"></div>
+            <p className="text-blue-600 font-medium">Loading dashboard...</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
-    return { total, pending, inProgress, resolved, rejected };
-  };
-
-  const stats = getStatsData();
+  if (error) {
+    return (
+      <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 via-white to-yellow-50">
+        <Header />
+        <main className="flex-grow flex items-center justify-center">
+          <div className="text-center py-12">
+            <p className="text-red-600 font-medium">Error loading dashboard: {error}</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-blue-50 via-white to-yellow-50">
@@ -278,7 +234,7 @@ const AdminDashboard = () => {
 
           <div className="mb-6">
             <p className="text-blue-600 font-medium">
-              Showing {currentComplaints.length} of {filteredComplaints.length} complaints
+              Showing {currentComplaints.length} of {complaints.length} complaints
             </p>
           </div>
 

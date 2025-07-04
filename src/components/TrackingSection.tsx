@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Search, Clock, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { complaintService } from '../services/complaintService';
 import type { Complaint } from '../types/complaint';
-import { sampleComplaints } from '../utils/sampleData';
 
 const TrackingSection = () => {
   const [trackingId, setTrackingId] = useState('');
@@ -45,7 +45,7 @@ const TrackingSection = () => {
     return status.charAt(0).toUpperCase() + status.slice(1);
   };
 
-  const handleTrack = () => {
+  const handleTrack = async () => {
     if (!trackingId.trim()) {
       alert('Please enter a complaint ID');
       return;
@@ -54,39 +54,23 @@ const TrackingSection = () => {
     setIsSearching(true);
     setNotFound(false);
 
-    // Get complaints from localStorage
-    let complaints: Complaint[] = [];
-    const stored = localStorage.getItem('citysolve_complaints');
-    
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        complaints = Array.isArray(parsed) ? parsed : [];
-      } catch (error) {
-        console.error('Error parsing stored complaints:', error);
-        complaints = [];
-      }
-    }
-    
-    // If no stored complaints, use sample data
-    if (complaints.length === 0) {
-      complaints = [...sampleComplaints];
-    }
-    
-    const found = complaints.find((c: Complaint) => 
-      c.id.toLowerCase() === trackingId.toLowerCase()
-    );
-
-    setTimeout(() => {
-      if (found) {
-        setSearchResult(found);
+    try {
+      const complaint = await complaintService.getComplaintById(trackingId.trim());
+      
+      if (complaint) {
+        setSearchResult(complaint);
         setNotFound(false);
       } else {
         setSearchResult(null);
         setNotFound(true);
       }
+    } catch (error) {
+      console.error('Error tracking complaint:', error);
+      setSearchResult(null);
+      setNotFound(true);
+    } finally {
       setIsSearching(false);
-    }, 1000);
+    }
   };
 
   const generateStatusUpdates = (complaint: Complaint) => {
@@ -124,6 +108,19 @@ const TrackingSection = () => {
     return updates;
   };
 
+  const getPriorityColor = (priority: string) => {
+    switch (priority.toLowerCase()) {
+      case 'high':
+        return 'text-red-600 font-bold';
+      case 'medium':
+        return 'text-yellow-600 font-semibold';
+      case 'low':
+        return 'text-green-600 font-medium';
+      default:
+        return 'text-gray-600';
+    }
+  };
+
   return (
     <section id="track" className="py-20">
       <div className="container mx-auto px-6 max-w-7xl">
@@ -154,22 +151,6 @@ const TrackingSection = () => {
               >
                 {isSearching ? 'Searching...' : 'Track'}
               </button>
-            </div>
-            
-            {/* Sample IDs for demonstration */}
-            <div className="mt-4 p-4 bg-blue-50 rounded-xl">
-              <p className="text-sm font-semibold text-blue-900 mb-2">Try these sample complaint IDs:</p>
-              <div className="flex flex-wrap gap-2">
-                {sampleComplaints.slice(0, 3).map((complaint) => (
-                  <button
-                    key={complaint.id}
-                    onClick={() => setTrackingId(complaint.id)}
-                    className="text-xs bg-blue-600 text-white px-3 py-1 rounded-full hover:bg-blue-700 transition-colors"
-                  >
-                    {complaint.id}
-                  </button>
-                ))}
-              </div>
             </div>
           </div>
 
@@ -220,7 +201,9 @@ const TrackingSection = () => {
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-blue-600">Priority</p>
-                    <p className="font-bold text-blue-900 text-lg">{searchResult.priority}</p>
+                    <p className={`text-lg ${getPriorityColor(searchResult.priority)}`}>
+                      {searchResult.priority}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-blue-600">Contact</p>
